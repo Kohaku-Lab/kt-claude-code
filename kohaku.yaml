@@ -1,0 +1,30 @@
+name: kt-claude-code
+version: 0.1.0
+description: >-
+  KohakuTerrarium LLM backend that runs model steps through your local,
+  already signed-in Claude Code (Claude Agent SDK). Personal use; it provides
+  no login of its own.
+python_dependencies:
+  - claude-agent-sdk>=0.2.168,<0.3
+
+llm_backends:
+  - name: claude-code
+    module: kt_claude_code.provider
+    class: ClaudeCodeProvider
+    display_name: Claude Code (local sign-in)
+    description: Uses the Claude Code CLI you signed in to yourself.
+    credentials: external
+
+llm_presets:
+  - name: claude-code-opus
+    provider: claude-code
+    model: opus
+    max_context: 200000
+  - name: claude-code-sonnet
+    provider: claude-code
+    model: sonnet
+    max_context: 200000
+  - name: claude-code-haiku
+    provider: claude-code
+    model: haiku
+    max_context: 200000
