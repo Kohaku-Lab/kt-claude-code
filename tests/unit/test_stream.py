@@ -3,7 +3,7 @@
 import json
 
 import pytest
-from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock
+from claude_agent_sdk import AssistantMessage, SystemMessage, TextBlock, ToolUseBlock
 
 from kohakuterrarium.errors import LLMNotConfiguredError
 from kohakuterrarium.llm.recovery import ErrorClass
@@ -54,6 +54,24 @@ class TestText:
         assert stream.done
         assert stream.feed(event({"type": "message_start", "message": {}})) == ""
         assert text == "first"
+
+    def test_cli_compaction_reports_the_pre_compaction_size(self):
+        boundary = SystemMessage(
+            subtype="compact_boundary",
+            data={"compact_metadata": {"trigger": "auto", "pre_tokens": 950_000}},
+        )
+        stream, text = _feed([boundary] + message(text_events("ok")) + [result()])
+        assert text == "ok"
+        _calls, usage, _fields = stream.results()
+        # KT must still see the full size, or its own compaction never fires.
+        assert usage["prompt_tokens"] == 950_000
+        assert usage["total_tokens"] == 950_007
+        assert stream.cli_compacted_from == 950_000
+
+    def test_usage_is_untouched_without_cli_compaction(self):
+        stream, _ = _feed(message(text_events("ok")) + [result()])
+        assert stream.results()[1]["prompt_tokens"] == 16
+        assert stream.cli_compacted_from == 0
 
     def test_subagent_events_are_ignored(self):
         stream = StepStream()

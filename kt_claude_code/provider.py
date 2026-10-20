@@ -209,6 +209,11 @@ class ClaudeCodeProvider(BaseLLMProvider):
             ) from exc
         finally:
             self._workspace.cleanup(session_id, prompt_path)
+        if state.cli_compacted_from:
+            logger.warning(
+                "Claude Code compacted the context itself; KT should compact next",
+                prompt_tokens=state.cli_compacted_from,
+            )
         calls, usage, fields = state.results()
         self._last_tool_calls = calls
         self._last_usage = usage

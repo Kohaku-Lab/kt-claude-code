@@ -12,6 +12,7 @@ from claude_agent_sdk import (
     RateLimitEvent,
     ResultMessage,
     StreamEvent,
+    SystemMessage,
 )
 
 from kohakuterrarium.llm.anthropic_format import (
@@ -44,6 +45,8 @@ class StepStream:
         self._error_kind: str | None = None
         self._error_text = ""
         self._rate_limit_note = ""
+        # Prompt size before the CLI compacted on its own; 0 when it did not.
+        self.cli_compacted_from = 0
 
     def feed(self, msg: Any) -> str:
         """Consume one SDK message; returns visible text to stream (maybe empty).
@@ -63,6 +66,10 @@ class StepStream:
                     f"usage limit reached ({getattr(info, 'rate_limit_type', '')}, "
                     f"resets at {getattr(info, 'resets_at', '?')})"
                 )
+            return ""
+        if isinstance(msg, SystemMessage) and msg.subtype == "compact_boundary":
+            meta = msg.data.get("compact_metadata") or {}
+            self.cli_compacted_from = int(meta.get("pre_tokens") or 0)
             return ""
         if isinstance(msg, ResultMessage):
             self._result(msg)
@@ -150,7 +157,18 @@ class StepStream:
         fields: dict[str, Any] = {}
         if blocks:
             fields = inject_anthropic_segments({KT_CONTENT_KEY: blocks}, blocks)
-        return tool_calls_from_blocks(blocks), dict(self.usage), fields
+        return tool_calls_from_blocks(blocks), self._reported_usage(), fields
+
+    def _reported_usage(self) -> dict[str, int]:
+        """Usage for KT, with the prompt at its pre-compaction size if the CLI
+        compacted, so KT's own compaction still triggers."""
+        usage = dict(self.usage)
+        if self.cli_compacted_from > usage.get("prompt_tokens", 0):
+            usage["prompt_tokens"] = self.cli_compacted_from
+            usage["total_tokens"] = self.cli_compacted_from + usage.get(
+                "completion_tokens", 0
+            )
+        return usage
 
 
 def _block_type(block: Any) -> str:

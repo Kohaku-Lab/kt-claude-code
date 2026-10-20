@@ -5,7 +5,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from claude_agent_sdk import CLINotFoundError
+from claude_agent_sdk import CLINotFoundError, SystemMessage
 
 from kohakuterrarium.errors import LLMNotConfiguredError
 from kohakuterrarium.llm.base import ToolSchema
@@ -172,6 +172,17 @@ class TestFailures:
         long = [{"role": "user", "content": f"m{i}"} for i in range(5)]
         assert await _step(provider, long) == "short now"
         assert fake.calls[1]["prompt"] == "summary + latest"
+
+    async def test_cli_side_compaction_still_reports_full_size_to_kt(self, workspace):
+        boundary = SystemMessage(
+            subtype="compact_boundary",
+            data={"compact_metadata": {"trigger": "auto", "pre_tokens": 900_000}},
+        )
+        provider, _ = _provider(
+            workspace, [boundary] + message(text_events("ok")) + [result()]
+        )
+        assert await _step(provider, [{"role": "user", "content": "hi"}]) == "ok"
+        assert provider.last_usage["prompt_tokens"] == 900_000
 
     async def test_missing_cli_is_a_configuration_error(self, workspace):
         provider, _ = _provider(workspace, CLINotFoundError("nope"))

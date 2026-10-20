@@ -73,6 +73,12 @@ Each `chat()` step is stateless, which matches what KohakuTerrarium expects:
 Because nothing is kept between steps, edit / regenerate / rewind / branch /
 compaction / resume all work unchanged.
 
+KT's own (non-blocking) compaction is the one that normally runs: it fires at
+`max_context × threshold`, well before the CLI's auto-compact point near the
+1M window. The CLI's compaction stays on only as a fallback (for example after
+one very large tool result). When it happens, the package logs a warning and
+reports the pre-compaction prompt size, so KT compacts on its next check.
+
 ## Limits
 
 - About 1.2–1.5 s of CLI start-up per step, and ~1k extra prompt tokens the
