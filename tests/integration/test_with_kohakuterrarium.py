@@ -8,6 +8,7 @@ uninstall all run for real.
 from pathlib import Path
 
 import pytest
+import yaml
 
 import kohakuterrarium as kt
 from kohakuterrarium.cli.doctor import doctor_cli
@@ -37,6 +38,14 @@ async def test_install_select_chat_with_tools_switch_and_uninstall(
     assert load_backends()["claude-code"].backend_type == "claude-code"
     profile = resolve_controller_llm({}, llm="claude-code/claude-code-haiku")
     assert (profile.backend_type, profile.model) == ("claude-code", "haiku")
+    assert (profile.max_context, profile.reasoning_effort) == (1_000_000, "high")
+    # Every shipped preset resolves through KT to this backend.
+    for preset in yaml.safe_load((PACKAGE_ROOT / "kohaku.yaml").read_text())[
+        "llm_presets"
+    ]:
+        resolved = resolve_controller_llm({}, llm=f"claude-code/{preset['name']}")
+        assert resolved.backend_type == "claude-code"
+        assert resolved.model == preset["model"]
     # KT never offers an API-key slot for it.
     assert "claude-code" not in {row["provider"] for row in list_keys_payload()}
 
@@ -45,6 +54,7 @@ async def test_install_select_chat_with_tools_switch_and_uninstall(
         + [result()],
         message(text_events("The code is KOHAKU-42.")) + [result()],
         message(text_events("Still here.")) + [result()],
+        message(text_events("Deep.")) + [result()],
     )
     monkeypatch.setattr(provider_mod, "query", fake)
 
@@ -95,6 +105,18 @@ async def test_install_select_chat_with_tools_switch_and_uninstall(
         assert fake.calls[2]["options"].model == "sonnet"
         # Earlier turns now arrive as resumed history.
         assert len(fake.calls[2]["transcript"]) >= 3
+        # The default effort comes from the preset.
+        assert fake.calls[2]["options"].effort == "high"
+
+        # A pinned version with variations: effort reaches the CLI, the
+        # context option sets where KT compacts.
+        selector = "claude-code/claude-code-opus-5.5@reasoning=max,context=200k"
+        agent.switch_model(selector)
+        assert (await agent.run("Think hard.")).text.strip() == "Deep."
+        assert fake.calls[3]["options"].model == "claude-opus-5-5"
+        assert fake.calls[3]["options"].effort == "max"
+        varied = resolve_controller_llm({}, llm=selector)
+        assert (varied.max_context, varied.reasoning_effort) == (200_000, "max")
     finally:
         await agent.stop()
 

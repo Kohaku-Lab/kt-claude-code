@@ -1,5 +1,5 @@
 name: kt-claude-code
-version: 0.1.0
+version: 0.2.0
 description: >-
   KohakuTerrarium LLM backend that runs model steps through your local,
   already signed-in Claude Code (Claude Agent SDK). Personal use; it provides
@@ -16,15 +16,289 @@ llm_backends:
     credentials: external
 
 llm_presets:
-  - name: claude-code-opus
-    provider: claude-code
-    model: opus
-    max_context: 200000
-  - name: claude-code-sonnet
-    provider: claude-code
-    model: sonnet
-    max_context: 200000
-  - name: claude-code-haiku
-    provider: claude-code
-    model: haiku
-    max_context: 200000
+- name: claude-code-opus
+  provider: claude-code
+  model: opus
+  max_context: 1000000
+  reasoning_effort: high
+  variation_groups:
+    reasoning:
+      low:
+        reasoning_effort: low
+      medium:
+        reasoning_effort: medium
+      high:
+        reasoning_effort: high
+      xhigh:
+        reasoning_effort: xhigh
+      max:
+        reasoning_effort: max
+    context:
+      200k:
+        max_context: 200000
+      400k:
+        max_context: 400000
+      700k:
+        max_context: 700000
+      1m:
+        max_context: 1000000
+- name: claude-code-fable
+  provider: claude-code
+  model: fable
+  max_context: 1000000
+  reasoning_effort: high
+  variation_groups:
+    reasoning:
+      low:
+        reasoning_effort: low
+      medium:
+        reasoning_effort: medium
+      high:
+        reasoning_effort: high
+      xhigh:
+        reasoning_effort: xhigh
+      max:
+        reasoning_effort: max
+    context:
+      200k:
+        max_context: 200000
+      400k:
+        max_context: 400000
+      700k:
+        max_context: 700000
+      1m:
+        max_context: 1000000
+- name: claude-code-sonnet
+  provider: claude-code
+  model: sonnet
+  max_context: 1000000
+  reasoning_effort: high
+  variation_groups:
+    reasoning:
+      low:
+        reasoning_effort: low
+      medium:
+        reasoning_effort: medium
+      high:
+        reasoning_effort: high
+      xhigh:
+        reasoning_effort: xhigh
+      max:
+        reasoning_effort: max
+    context:
+      200k:
+        max_context: 200000
+      400k:
+        max_context: 400000
+      700k:
+        max_context: 700000
+      1m:
+        max_context: 1000000
+- name: claude-code-haiku
+  provider: claude-code
+  model: haiku
+  max_context: 1000000
+  reasoning_effort: high
+  variation_groups:
+    reasoning:
+      low:
+        reasoning_effort: low
+      medium:
+        reasoning_effort: medium
+      high:
+        reasoning_effort: high
+      xhigh:
+        reasoning_effort: xhigh
+      max:
+        reasoning_effort: max
+    context:
+      200k:
+        max_context: 200000
+      400k:
+        max_context: 400000
+      700k:
+        max_context: 700000
+      1m:
+        max_context: 1000000
+- name: claude-code-opus-5.5
+  provider: claude-code
+  model: claude-opus-5-5
+  max_context: 1000000
+  reasoning_effort: high
+  variation_groups:
+    reasoning:
+      low:
+        reasoning_effort: low
+      medium:
+        reasoning_effort: medium
+      high:
+        reasoning_effort: high
+      xhigh:
+        reasoning_effort: xhigh
+      max:
+        reasoning_effort: max
+    context:
+      200k:
+        max_context: 200000
+      400k:
+        max_context: 400000
+      700k:
+        max_context: 700000
+      1m:
+        max_context: 1000000
+- name: claude-code-opus-5
+  provider: claude-code
+  model: claude-opus-5
+  max_context: 1000000
+  reasoning_effort: high
+  variation_groups:
+    reasoning:
+      low:
+        reasoning_effort: low
+      medium:
+        reasoning_effort: medium
+      high:
+        reasoning_effort: high
+      xhigh:
+        reasoning_effort: xhigh
+      max:
+        reasoning_effort: max
+    context:
+      200k:
+        max_context: 200000
+      400k:
+        max_context: 400000
+      700k:
+        max_context: 700000
+      1m:
+        max_context: 1000000
+- name: claude-code-fable-5.1
+  provider: claude-code
+  model: claude-fable-5-1
+  max_context: 1000000
+  reasoning_effort: high
+  variation_groups:
+    reasoning:
+      low:
+        reasoning_effort: low
+      medium:
+        reasoning_effort: medium
+      high:
+        reasoning_effort: high
+      xhigh:
+        reasoning_effort: xhigh
+      max:
+        reasoning_effort: max
+    context:
+      200k:
+        max_context: 200000
+      400k:
+        max_context: 400000
+      700k:
+        max_context: 700000
+      1m:
+        max_context: 1000000
+- name: claude-code-fable-5
+  provider: claude-code
+  model: claude-fable-5
+  max_context: 1000000
+  reasoning_effort: high
+  variation_groups:
+    reasoning:
+      low:
+        reasoning_effort: low
+      medium:
+        reasoning_effort: medium
+      high:
+        reasoning_effort: high
+      xhigh:
+        reasoning_effort: xhigh
+      max:
+        reasoning_effort: max
+    context:
+      200k:
+        max_context: 200000
+      400k:
+        max_context: 400000
+      700k:
+        max_context: 700000
+      1m:
+        max_context: 1000000
+- name: claude-code-sonnet-5.5
+  provider: claude-code
+  model: claude-sonnet-5-5
+  max_context: 1000000
+  reasoning_effort: high
+  variation_groups:
+    reasoning:
+      low:
+        reasoning_effort: low
+      medium:
+        reasoning_effort: medium
+      high:
+        reasoning_effort: high
+      xhigh:
+        reasoning_effort: xhigh
+      max:
+        reasoning_effort: max
+    context:
+      200k:
+        max_context: 200000
+      400k:
+        max_context: 400000
+      700k:
+        max_context: 700000
+      1m:
+        max_context: 1000000
+- name: claude-code-sonnet-5
+  provider: claude-code
+  model: claude-sonnet-5
+  max_context: 1000000
+  reasoning_effort: high
+  variation_groups:
+    reasoning:
+      low:
+        reasoning_effort: low
+      medium:
+        reasoning_effort: medium
+      high:
+        reasoning_effort: high
+      xhigh:
+        reasoning_effort: xhigh
+      max:
+        reasoning_effort: max
+    context:
+      200k:
+        max_context: 200000
+      400k:
+        max_context: 400000
+      700k:
+        max_context: 700000
+      1m:
+        max_context: 1000000
+- name: claude-code-haiku-5.5
+  provider: claude-code
+  model: claude-haiku-5-5
+  max_context: 1000000
+  reasoning_effort: high
+  variation_groups:
+    reasoning:
+      low:
+        reasoning_effort: low
+      medium:
+        reasoning_effort: medium
+      high:
+        reasoning_effort: high
+      xhigh:
+        reasoning_effort: xhigh
+      max:
+        reasoning_effort: max
+    context:
+      200k:
+        max_context: 200000
+      400k:
+        max_context: 400000
+      700k:
+        max_context: 700000
+      1m:
+        max_context: 1000000

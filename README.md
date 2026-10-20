@@ -38,8 +38,25 @@ environment. The SDK ships its own `claude` CLI.
 
 ## Use
 
-Presets: `claude-code/claude-code-opus`, `claude-code/claude-code-sonnet`,
-`claude-code/claude-code-haiku`. Pick one in Settings, with `/model`, or:
+Presets (all `claude-code/…`):
+
+| Preset | Model |
+|---|---|
+| `claude-code-opus` / `-fable` / `-sonnet` / `-haiku` | Newest version of that family (CLI alias) |
+| `claude-code-opus-5.5`, `-opus-5`, `-fable-5.1`, `-fable-5`, `-sonnet-5.5`, `-sonnet-5`, `-haiku-5.5` | That exact version |
+
+Each preset has two variation groups:
+
+| Group | Options | Default |
+|---|---|---|
+| `reasoning` | the effort levels the model supports (`low` … `max`) | `high` |
+| `context` | `200k`, `400k`, `700k`, `1m` | `1m` |
+
+`context` sets KT's own `max_context`, which decides when KT compacts the
+conversation; the models' window is 1M either way. Example:
+`claude-code/claude-code-opus-5.5@reasoning=max,context=400k`.
+
+Pick a preset in Settings, with `/model`, or:
 
 ```yaml
 # creature config.yaml
@@ -94,6 +111,14 @@ reports the pre-compaction prompt size, so KT compacts on its next check.
 uv venv && uv pip install -e ../KohakuTerrarium -e ".[dev]"
 pytest                          # unit + integration (no network)
 KT_CLAUDE_LIVE=1 pytest tests/live   # real CLI, uses a little of your plan
+```
+
+The presets in `kohaku.yaml` are generated from the model list the signed-in
+CLI reports. Refresh them after a new model ships (or an SDK upgrade):
+
+```bash
+python scripts/sync_models.py           # rewrite llm_presets in kohaku.yaml
+python scripts/sync_models.py --check   # exit 1 if it is out of date
 ```
 
 ## License
