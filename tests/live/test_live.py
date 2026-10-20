@@ -189,3 +189,44 @@ async def test_not_signed_in_is_a_typed_error(tmp_path, monkeypatch):
 
 def test_doctor_reports_sign_in():
     assert "signed in via" in ClaudeCodeProvider.doctor()
+
+
+async def test_prompt_cache_holds_across_steps(tmp_path, workspace):
+    llm = ClaudeCodeProvider(model=MODEL, workspace=workspace)
+    usages: list[dict] = []
+    step = llm._one_step
+
+    async def record(messages, tools):
+        async for chunk in step(messages, tools):
+            yield chunk
+        usages.append(dict(llm.last_usage))
+
+    llm._one_step = record
+
+    @kt.tool
+    def secret_code(city: str) -> str:
+        """Return the secret code for a city."""
+        return f"code for {city} is KOHAKU-{len(city)}"
+
+    config = AgentConfig(
+        name="cc-cache",
+        system_prompt="Answer briefly. Use tools when asked. " + "Context. " * 1200,
+        tool_format="native",
+        agent_path=tmp_path,
+        input=InputConfig(type="none"),
+        output=OutputConfig(type="none"),
+        tools=[],
+    )
+    agent = await Agent.build(config, llm=llm, io="none", tools=[secret_code])
+    await agent.start()
+    try:
+        await agent.run("Get the secret code for Kyoto.")
+        await agent.run("And for Osaka and Nara? Call the tool for both at once.")
+        await agent.run("Which code was shortest?")
+    finally:
+        await agent.stop()
+    assert len(usages) >= 5
+    # Every step after the first re-reads almost all of its prompt; without
+    # the recorded-turn replay each step re-wrote the whole context.
+    for usage in usages[1:]:
+        assert usage.get("cached_tokens", 0) >= 0.9 * usage["prompt_tokens"], usages

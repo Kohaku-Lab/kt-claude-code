@@ -78,17 +78,38 @@ Profile options:
 
 Each `chat()` step is stateless, which matches what KohakuTerrarium expects:
 
-1. KT's history is written as a Claude Code transcript (thinking dropped,
-   tool ids made API-safe) under a KT-owned working directory.
+1. KT's history is written as a Claude Code transcript under a KT-owned
+   working directory. Turns this backend produced are replayed from the
+   entries the CLI saved for them (see *Prompt cache* below); other turns are
+   converted (thinking dropped, tool ids made API-safe).
 2. The CLI resumes it with KT's system prompt, no built-in tools and no
    user settings. KT's tools are offered through an in-process MCP server.
 3. The model's text streams back; any tool calls are returned to KT and
    **deferred** by a `PreToolUse` hook, so the CLI never runs a tool. KT runs
    them (plugins, sandbox and permission gates included).
-4. The transcript and prompt files are deleted.
+4. The result of a single tool call is sent back as the next step's input,
+   answering the deferred call. Results of parallel calls go into the
+   transcript instead, followed by a `(continue)` prompt, because the CLI
+   resumes only one deferred call.
+5. The transcript, the CLI's saved session and the prompt file are deleted.
 
 Because nothing is kept between steps, edit / regenerate / rewind / branch /
 compaction / resume all work unchanged.
+
+### Prompt cache
+
+The CLI caches the prompt up to the end of each request, so the next step
+only reads that cache when it sends the same bytes again. The CLI adds its
+own context to a session (environment, model, date, account context) and
+keeps signed thinking, so a plain conversion never matches. After each step
+the package reads back the entries the CLI saved and stores them on the
+assistant message (`_kt_claude_code_turn`, kept in the KT session). The next
+step replays them exactly, as long as the turn and the prompt before it are
+unchanged; an edited turn falls back to a plain conversion. With this, each
+step after the first reads almost all of its prompt from the cache.
+
+These stored entries include what the CLI added, such as the working
+directory and the account context it shows the model.
 
 KT's own (non-blocking) compaction is the one that normally runs: it fires at
 `max_context × threshold`, well before the CLI's auto-compact point near the
@@ -98,12 +119,21 @@ reports the pre-compaction prompt size, so KT compacts on its next check.
 
 ## Limits
 
-- About 1.2–1.5 s of CLI start-up per step, and ~1k extra prompt tokens the
-  CLI adds. Prompt caching works across steps.
+- About 1.5–2 s of CLI start-up and exit per step, and ~1k extra prompt
+  tokens the CLI adds.
+- After parallel tool calls the CLI inserts a short "No response requested."
+  reply before `(continue)`; the model sees it.
+- A step without tools has a different tool list, so it does not share the
+  cache with steps that have tools.
 - `temperature`, `top_p`, stop sequences and provider-native tools are not
   supported.
 - The transcript file format is internal to the CLI. The SDK pins the CLI
-  version; run the live tests before upgrading `claude-agent-sdk`.
+  version; run the live tests (they check the cache too) before upgrading
+  `claude-agent-sdk`.
+- Showing cache reads in KT's token totals, and keeping the stored entries
+  away from OpenAI-compatible providers after a model switch, need a
+  KohakuTerrarium build that counts `cached_tokens` for Anthropic usage and
+  strips every `_kt_*` message field.
 
 ## Development
 

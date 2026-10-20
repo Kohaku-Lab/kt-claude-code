@@ -56,6 +56,30 @@ class Workspace:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         return path
 
+    def saved_entries(
+        self, session_id: str, after_uuid: str | None
+    ) -> list[dict[str, Any]]:
+        """Entries the CLI saved to ``session_id`` after the one ``after_uuid``."""
+        path = self.project_dir / f"{session_id}.jsonl"
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return []
+        entries = []
+        for line in lines:
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(entry, dict):
+                entries.append(entry)
+        if after_uuid is None:
+            return entries
+        for index, entry in enumerate(entries):
+            if entry.get("uuid") == after_uuid:
+                return entries[index + 1 :]
+        return []
+
     def write_system_prompt(self, text: str) -> Path:
         """Write the system prompt to a unique file; returns its path."""
         path = self.root / f"system-{uuid.uuid4().hex}.md"

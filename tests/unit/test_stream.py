@@ -3,7 +3,13 @@
 import json
 
 import pytest
-from claude_agent_sdk import AssistantMessage, SystemMessage, TextBlock, ToolUseBlock
+from claude_agent_sdk import (
+    AssistantMessage,
+    DeferredToolUse,
+    SystemMessage,
+    TextBlock,
+    ToolUseBlock,
+)
 
 from kohakuterrarium.errors import LLMNotConfiguredError
 from kohakuterrarium.llm.recovery import ErrorClass
@@ -42,18 +48,45 @@ class TestText:
         assert usage["prompt_tokens"] >= 11 and usage["completion_tokens"] == 7
         assert fields["_kt_anthropic_content"] == [{"type": "text", "text": "Hello"}]
 
-    def test_step_ends_at_message_stop(self):
+    def test_step_waits_for_the_result_after_message_stop(self):
+        # The CLI saves the turn before its result; stopping earlier loses it.
         stream = StepStream()
         for msg in message(text_events("one")):
             stream.feed(msg)
+        assert stream.done is False
+        stream.feed(result(session_id="cli-sid"))
         assert stream.done is True
+        assert stream.session_id == "cli-sid"
 
     def test_second_message_is_not_consumed(self):
         stream = StepStream()
         text = "".join(stream.feed(m) for m in message(text_events("first")))
-        assert stream.done
+        assert not stream.done
         assert stream.feed(event({"type": "message_start", "message": {}})) == ""
+        assert stream.done
         assert text == "first"
+
+    def test_redeferral_before_the_model_call_is_skipped(self):
+        call = DeferredToolUse(id="toolu_1", name="mcp__kt__w", input={})
+        stream, text = _feed(
+            [result(deferred_tool_use=call)] + message(text_events("ok")) + [result()]
+        )
+        assert text == "ok"
+        assert stream.done
+
+    def test_deferral_after_the_model_call_ends_the_step(self):
+        call = DeferredToolUse(id="toolu_1", name="mcp__kt__w", input={})
+        stream, _ = _feed(
+            message(tool_events("toolu_1", "w", {}, 0), "tool_use")
+            + [result(deferred_tool_use=call)]
+        )
+        assert stream.done
+        assert [c.id for c in stream.results()[0]] == ["toolu_1"]
+
+    def test_error_result_is_never_skipped(self):
+        call = DeferredToolUse(id="toolu_1", name="mcp__kt__w", input={})
+        with pytest.raises(ClaudeCodeError):
+            _feed([result(is_error=True, result="boom", deferred_tool_use=call)])
 
     def test_cli_compaction_reports_the_pre_compaction_size(self):
         boundary = SystemMessage(

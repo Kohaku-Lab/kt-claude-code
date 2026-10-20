@@ -47,6 +47,8 @@ class StepStream:
         self._rate_limit_note = ""
         # Prompt size before the CLI compacted on its own; 0 when it did not.
         self.cli_compacted_from = 0
+        # The CLI session that holds this step's saved transcript.
+        self.session_id = ""
 
     def feed(self, msg: Any) -> str:
         """Consume one SDK message; returns visible text to stream (maybe empty).
@@ -72,7 +74,8 @@ class StepStream:
             self.cli_compacted_from = int(meta.get("pre_tokens") or 0)
             return ""
         if isinstance(msg, ResultMessage):
-            self._result(msg)
+            if not self._redeferred(msg):
+                self._result(msg)
         return ""
 
     def _event(self, event: dict[str, Any]) -> str:
@@ -102,7 +105,6 @@ class StepStream:
                 self.usage = merge_usage(self.usage, event["usage"])
         elif etype == "message_stop":
             self._message_closed = True
-            self.done = True
         return ""
 
     def _assistant(self, msg: AssistantMessage) -> str:
@@ -126,8 +128,18 @@ class StepStream:
             self.usage = merge_usage(self.usage, msg.usage)
         return strip_surrogates(text)
 
+    def _redeferred(self, msg: ResultMessage) -> bool:
+        """The empty result the CLI emits when it re-defers a resumed call."""
+        return (
+            not msg.is_error
+            and msg.deferred_tool_use is not None
+            and not self._message_open
+            and not self._error_kind
+        )
+
     def _result(self, msg: ResultMessage) -> None:
         self.done = True
+        self.session_id = msg.session_id or ""
         if msg.is_error or self._error_kind:
             text = self._error_text or msg.result or ""
             if self._rate_limit_note and not self._error_kind:

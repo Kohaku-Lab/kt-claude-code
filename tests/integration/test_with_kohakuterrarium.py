@@ -89,11 +89,15 @@ async def test_install_select_chat_with_tools_switch_and_uninstall(
         assert set(tool_step["options"].mcp_servers) == {"kt"}
         assert "Answer briefly." in tool_step["system_text"]
         assert tool_step["options"].model == "haiku"
+        # The single call is marked deferred; its result is the next prompt.
+        marker = answer_step["transcript"][-1]["attachment"]
+        assert (marker["type"], marker["toolUseID"]) == (
+            "hook_deferred_tool",
+            "toolu_1",
+        )
+        sent = [m async for m in answer_step["prompt"]]
         results = [
-            block
-            for entry in answer_step["transcript"]
-            for block in entry["message"]["content"]
-            if block.get("type") == "tool_result"
+            b for b in sent[0]["message"]["content"] if b["type"] == "tool_result"
         ]
         assert [r["content"] for r in results] == ["code for Kyoto is KOHAKU-42"]
 

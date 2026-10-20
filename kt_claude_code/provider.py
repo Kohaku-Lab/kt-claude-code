@@ -30,13 +30,20 @@ from kt_claude_code.doctor import login_status
 from kt_claude_code.errors import classify
 from kt_claude_code.options import StepSettings, build_options
 from kt_claude_code.stream import StepStream
-from kt_claude_code.transcript import plan_transcript, transcript_entries
+from kt_claude_code.transcript import (
+    TURN_KEY,
+    plan_transcript,
+    record_turn,
+    transcript_entries,
+)
 from kt_claude_code.workspace import Workspace
 
 logger = get_logger(__name__)
 
 DEFAULT_MODEL = "sonnet"
 DEFAULT_CONCURRENCY = 4
+# How long to let the CLI finish writing its session after the result.
+DRAIN_SECONDS = 5.0
 
 # One semaphore per (event loop, concurrency limit), shared by every provider.
 _SLOTS: (
@@ -165,23 +172,26 @@ class ClaudeCodeProvider(BaseLLMProvider):
         self._last_tool_calls = []
         self._last_usage = {}
         self._last_assistant_extra_fields = {}
-        plan = plan_transcript(messages)
+        plan = plan_transcript(messages, defer_calls=bool(tools))
         session_id = None
+        last_uuid = None
         prompt_path = None
+        recorded: list[dict[str, Any]] = []
         state = StepStream()
         try:
             if plan.history:
                 session_id = self._workspace.new_session_id()
-                self._workspace.write_transcript(
-                    session_id,
-                    transcript_entries(
-                        plan.history,
-                        session_id=session_id,
-                        cwd=self._workspace.cwd,
-                        version=__cli_version__,
-                        model=self.settings.model,
-                    ),
+                entries = transcript_entries(
+                    plan.history,
+                    session_id=session_id,
+                    cwd=self._workspace.cwd,
+                    version=__cli_version__,
+                    model=self.settings.model,
+                    turns=plan.turns,
+                    defer_calls=bool(tools),
                 )
+                last_uuid = entries[-1]["uuid"]
+                self._workspace.write_transcript(session_id, entries)
             if plan.system:
                 prompt_path = self._workspace.write_system_prompt(plan.system)
             options = build_options(
@@ -192,16 +202,28 @@ class ClaudeCodeProvider(BaseLLMProvider):
                 tools=tools,
             )
             async with self._slot():
-                stream = self._query(prompt=plan.prompt, options=options)
+                prompt = plan.prompt
+                if isinstance(prompt, list):
+                    prompt = _user_message(prompt, session_id or "")
+                stream = self._query(prompt=prompt, options=options)
                 try:
-                    async for msg in stream:
-                        text = state.feed(msg)
-                        if text:
-                            yield text
-                        if state.done:
-                            break
+                    try:
+                        async for msg in stream:
+                            text = state.feed(msg)
+                            if text:
+                                yield text
+                            if state.done:
+                                break
+                    except Exception:
+                        if state.session_id:
+                            await _drain(stream)
+                        raise
+                    if state.session_id:
+                        await _drain(stream)
                 finally:
                     await stream.aclose()
+            if state.session_id and not state.cli_compacted_from:
+                recorded = self._workspace.saved_entries(state.session_id, last_uuid)
         except CLINotFoundError as exc:
             raise LLMNotConfiguredError(
                 f"Claude Code CLI not found ({exc}). Install the Claude Agent SDK "
@@ -209,6 +231,8 @@ class ClaudeCodeProvider(BaseLLMProvider):
             ) from exc
         finally:
             self._workspace.cleanup(session_id, prompt_path)
+            if state.session_id and state.session_id != session_id:
+                self._workspace.cleanup(state.session_id, None)
         if state.cli_compacted_from:
             logger.warning(
                 "Claude Code compacted the context itself; KT should compact next",
@@ -217,6 +241,9 @@ class ClaudeCodeProvider(BaseLLMProvider):
         calls, usage, fields = state.results()
         self._last_tool_calls = calls
         self._last_usage = usage
+        turn = record_turn(plan.prompt, recorded)
+        if turn is not None:
+            fields = {**fields, TURN_KEY: turn}
         self._last_assistant_extra_fields = fields
 
     async def _complete_chat(
@@ -230,3 +257,30 @@ class ClaudeCodeProvider(BaseLLMProvider):
             usage=dict(self._last_usage),
             model=self.settings.model,
         )
+
+
+async def _user_message(
+    content: list[dict[str, Any]], session_id: str
+) -> AsyncIterator[dict[str, Any]]:
+    """``content`` as the single stream-json user message of a step."""
+    yield {
+        "type": "user",
+        "message": {"role": "user", "content": content},
+        "parent_tool_use_id": None,
+        "session_id": session_id,
+    }
+
+
+async def _drain(stream: AsyncIterator[Any]) -> None:
+    """Read what is left so the CLI exits after saving, within a time limit."""
+
+    async def consume() -> None:
+        async for _ in stream:
+            pass
+
+    try:
+        await asyncio.wait_for(consume(), DRAIN_SECONDS)
+    except asyncio.TimeoutError:
+        logger.debug("Claude Code did not exit in time after its result")
+    except Exception as exc:
+        logger.debug("Claude Code failed while exiting", error=str(exc))

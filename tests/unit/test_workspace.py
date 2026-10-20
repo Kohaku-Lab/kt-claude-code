@@ -64,3 +64,21 @@ def test_sweep_removes_only_stale_files(workspace):
     assert workspace.sweep() == 2
     assert not old.exists() and not old_prompt.exists()
     assert fresh.exists() and other.exists()
+
+
+def test_saved_entries_are_the_ones_after_the_given_uuid(workspace):
+    sid = workspace.new_session_id()
+    path = workspace.write_transcript(
+        sid, [{"uuid": "a"}, {"uuid": "b"}, {"uuid": "c"}]
+    )
+    with open(path, "a", encoding="utf-8") as f:
+        f.write("not json\n[1]\n")
+    assert workspace.saved_entries(sid, "a") == [{"uuid": "b"}, {"uuid": "c"}]
+    assert workspace.saved_entries(sid, None) == [
+        {"uuid": "a"},
+        {"uuid": "b"},
+        {"uuid": "c"},
+    ]
+    # An anchor the CLI did not keep means nothing can be trusted as new.
+    assert workspace.saved_entries(sid, "gone") == []
+    assert workspace.saved_entries("missing", None) == []
