@@ -21,7 +21,9 @@ dev = ["pytest", "pytest-asyncio", "claude-agent-sdk>=0.2.168,<0.3", "ruff", "bl
 packages = ["kt_claude_code"]
 
 [tool.ruff.lint]
-select = ["F401", "F841"]
+preview = true
+explicit-preview-rules = true
+select = ["F401", "F841", "PLW1514"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
