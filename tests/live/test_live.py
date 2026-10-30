@@ -13,7 +13,7 @@ import pytest
 
 import kohakuterrarium as kt
 from kohakuterrarium.core.agent import Agent
-from kohakuterrarium.core.config_types import AgentConfig, InputConfig, OutputConfig
+from kohakuterrarium.core.config.types import AgentConfig, InputConfig, OutputConfig
 from kohakuterrarium.errors import LLMNotConfiguredError
 from kohakuterrarium.llm.base import ToolSchema
 

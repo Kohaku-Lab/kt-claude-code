@@ -1,7 +1,7 @@
 """Map Claude Code failures to KohakuTerrarium's typed errors and recovery classes."""
 
 from kohakuterrarium.errors import LLMNotConfiguredError
-from kohakuterrarium.llm.recovery import ErrorClass, classify_openai_error
+from kohakuterrarium.llm.recovery.errors import ErrorClass, classify_openai_error
 
 LOGIN_HINT = (
     "Sign in to Claude Code yourself: run `claude`, then `/login`. "

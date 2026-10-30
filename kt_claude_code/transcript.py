@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from kohakuterrarium.llm.anthropic_format import prepare_messages
+from kohakuterrarium.llm.anthropic.format import prepare_messages
 
 TOOL_PREFIX = "mcp__kt__"
 CONTINUE_PROMPT = "(continue)"

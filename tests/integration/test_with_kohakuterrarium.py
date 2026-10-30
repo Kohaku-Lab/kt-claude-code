@@ -13,9 +13,9 @@ import yaml
 import kohakuterrarium as kt
 from kohakuterrarium.cli.doctor import doctor_cli
 from kohakuterrarium.core.agent import Agent
-from kohakuterrarium.core.config_types import AgentConfig, InputConfig, OutputConfig
-from kohakuterrarium.llm.backends import load_backends, load_yaml_store
-from kohakuterrarium.llm.profiles import resolve_controller_llm
+from kohakuterrarium.core.config.types import AgentConfig, InputConfig, OutputConfig
+from kohakuterrarium.llm.profiles.backends import load_backends, load_yaml_store
+from kohakuterrarium.llm.profiles.resolve import resolve_controller_llm
 from kohakuterrarium.packages.install import install_package, uninstall_package
 from kohakuterrarium.studio.identity.api_keys import list_keys_payload
 

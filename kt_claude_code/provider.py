@@ -22,8 +22,8 @@ from kohakuterrarium.llm.base import (
     OverflowRecoveryState,
     ToolSchema,
 )
-from kohakuterrarium.llm.recovery import RetryPolicy, backoff_delay
-from kohakuterrarium.llm.stream_replay import ReplayFilter
+from kohakuterrarium.llm.recovery.errors import RetryPolicy, backoff_delay
+from kohakuterrarium.llm.stream.replay import ReplayFilter
 from kohakuterrarium.utils.logging import get_logger
 
 from kt_claude_code.doctor import login_status

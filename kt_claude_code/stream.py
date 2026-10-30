@@ -15,7 +15,7 @@ from claude_agent_sdk import (
     SystemMessage,
 )
 
-from kohakuterrarium.llm.anthropic_format import (
+from kohakuterrarium.llm.anthropic.format import (
     KT_CONTENT_KEY,
     apply_delta,
     block_to_dict,
@@ -25,8 +25,8 @@ from kohakuterrarium.llm.anthropic_format import (
     tool_calls_from_blocks,
 )
 from kohakuterrarium.llm.base import NativeToolCall
-from kohakuterrarium.llm.openai_sanitize import strip_surrogates
-from kohakuterrarium.llm.turn_segments import inject_anthropic_segments
+from kohakuterrarium.llm.openai.sanitize import strip_surrogates
+from kohakuterrarium.llm.stream.segments import inject_anthropic_segments
 
 from kt_claude_code.errors import error_from_result
 from kt_claude_code.transcript import kt_tool_name
