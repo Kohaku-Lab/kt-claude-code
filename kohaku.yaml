@@ -1,5 +1,6 @@
 name: kt-claude-code
-version: 0.2.0
+version: 0.3.0
+framework: ">=2.2.0,<3.0.0"
 description: >-
   KohakuTerrarium LLM backend that runs model steps through your local,
   already signed-in Claude Code (Claude Agent SDK). Personal use; it provides

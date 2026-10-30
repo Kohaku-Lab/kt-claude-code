@@ -25,7 +25,8 @@ your plan; see [Legal and compliance](https://code.claude.com/docs/en/legal-and-
 
 ## Install
 
-Requires a KohakuTerrarium release newer than 2.1.7 (the first with the `llm_backends:` package slot).
+Requires KohakuTerrarium `>=2.2.0,<3.0.0` (`framework:` in `kohaku.yaml`). Version 0.3.0
+targets the 2.2 module layout; earlier KohakuTerrarium releases need 0.2.x.
 
 ```bash
 kt install @kt-claude-code      # from TerrariumMarket
@@ -135,10 +136,30 @@ reports the pre-compaction prompt size, so KT compacts on its next check.
   KohakuTerrarium build that counts `cached_tokens` for Anthropic usage and
   strips every `_kt_*` message field.
 
+## Core modules consumed
+
+The package imports these `kohakuterrarium` modules directly; a core change to
+any of them must be checked against `kt_claude_code`.
+
+| Core module | Symbols | Used by |
+|---|---|---|
+| `llm.anthropic.format` | `KT_CONTENT_KEY`, `apply_delta`, `block_to_dict`, `merge_usage`, `normalise_started_block`, `ordered_blocks`, `tool_calls_from_blocks`, `prepare_messages` | `stream`, `transcript` |
+| `llm.openai.sanitize` | `strip_surrogates` | `stream` |
+| `llm.recovery.errors` | `ErrorClass`, `RetryPolicy`, `classify_openai_error`, `backoff_delay` | `errors`, `provider` |
+| `llm.stream.replay` | `ReplayFilter` | `provider` |
+| `llm.stream.segments` | `inject_anthropic_segments` | `stream` |
+| `llm.base` | `BaseLLMProvider`, `ChatResponse`, `LLMConfig`, `NativeToolCall`, `OverflowRecoveryState`, `ToolSchema` | `provider`, `stream`, `options`, `tool_bridge` |
+| `errors`, `utils.logging`, `utils.config_dir` | `LLMNotConfiguredError`, `get_logger`, `config_dir` | `errors`, `provider`, `workspace` |
+
+Registration goes through the `llm_backends:` and `llm_presets:` slots of
+`kohaku.yaml` (loaded by `llm.profiles.backends` and `llm.profiles.resolve`;
+the integration test installs the package and resolves every preset through
+`resolve_controller_llm`).
+
 ## Development
 
 ```bash
-uv venv && uv pip install -e ../KohakuTerrarium -e ".[dev]"
+uv venv && uv pip install -e ../KohakuTerrarium -e ".[dev]"   # dev extra brings claude-agent-sdk
 pytest                          # unit + integration (no network)
 KT_CLAUDE_LIVE=1 pytest tests/live   # real CLI, uses a little of your plan
 ```

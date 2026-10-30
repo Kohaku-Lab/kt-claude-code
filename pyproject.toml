@@ -4,18 +4,18 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kt-claude-code"
-version = "0.2.0"
+version = "0.3.0"
 description = "KohakuTerrarium LLM backend driving your local, signed-in Claude Code."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 dependencies = [
-    "kohakuterrarium>2.1.7",
+    "kohakuterrarium>=2.2.0",
     "claude-agent-sdk>=0.2.168,<0.3",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-asyncio"]
+dev = ["pytest", "pytest-asyncio", "claude-agent-sdk>=0.2.168,<0.3", "ruff", "black"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["kt_claude_code"]
