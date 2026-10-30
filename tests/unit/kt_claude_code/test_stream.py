@@ -12,7 +12,7 @@ from claude_agent_sdk import (
 )
 
 from kohakuterrarium.errors import LLMNotConfiguredError
-from kohakuterrarium.llm.recovery import ErrorClass
+from kohakuterrarium.llm.recovery.errors import ErrorClass
 
 from kt_claude_code.errors import ClaudeCodeError
 from kt_claude_code.stream import StepStream

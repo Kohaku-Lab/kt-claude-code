@@ -9,7 +9,7 @@ from claude_agent_sdk import CLINotFoundError, ResultMessage, SystemMessage
 
 from kohakuterrarium.errors import LLMNotConfiguredError
 from kohakuterrarium.llm.base import ToolSchema
-from kohakuterrarium.llm.recovery import ErrorClass
+from kohakuterrarium.llm.recovery.errors import ErrorClass
 
 from kt_claude_code import provider as provider_mod
 from kt_claude_code.errors import ClaudeCodeError

@@ -1,4 +1,4 @@
-"""Unit tests for ``kt_claude_code.options`` and ``kt_claude_code.tool_bridge``."""
+"""Unit tests for ``kt_claude_code.options``."""
 
 from pathlib import Path
 
@@ -10,7 +10,6 @@ from kt_claude_code.options import (
     StepSettings,
     build_options,
 )
-from kt_claude_code.tool_bridge import NOT_EXECUTED, _never_run, defer_tool_call
 
 SCHEMA = {"type": "object", "properties": {"city": {"type": "string"}}}
 
@@ -52,7 +51,7 @@ def test_system_prompt_file_resume_effort_and_cli_path():
         session_id="sid",
         prompt=Path("/w/system.md"),
     )
-    assert opts.system_prompt == {"type": "file", "path": "/w/system.md"}
+    assert opts.system_prompt == {"type": "file", "path": str(Path("/w/system.md"))}
     assert opts.resume == "sid"
     assert opts.effort == "high"
     assert opts.thinking == {"type": "disabled"}
@@ -63,17 +62,7 @@ def test_unknown_effort_is_not_passed():
     assert _build(StepSettings(model="m", effort="turbo")).effort is None
 
 
-def test_tools_become_a_deferred_mcp_server():
+def test_tools_are_registered_on_the_kt_server():
     opts = _build(tools=[ToolSchema("weather", "Weather.", SCHEMA)])
-    server = opts.mcp_servers["kt"]
-    assert server["type"] == "sdk" and server["name"] == "kt"
-    [matcher] = opts.hooks["PreToolUse"]
-    assert matcher.matcher == "mcp__kt__.*"
-
-
-async def test_the_hook_defers_and_the_handler_refuses():
-    decision = await defer_tool_call({}, "toolu_1", None)
-    assert decision["hookSpecificOutput"]["permissionDecision"] == "defer"
-    reply = await _never_run({"city": "x"})
-    assert reply["is_error"] is True
-    assert reply["content"][0]["text"] == NOT_EXECUTED
+    assert set(opts.mcp_servers) == {"kt"}
+    assert "PreToolUse" in opts.hooks

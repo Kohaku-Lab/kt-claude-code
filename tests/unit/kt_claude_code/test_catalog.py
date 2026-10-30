@@ -8,7 +8,7 @@ import yaml
 
 from kt_claude_code.catalog import CONTEXT_GROUP, presets_from_models
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 ALL_EFFORTS = ["low", "medium", "high", "xhigh", "max"]
 
 

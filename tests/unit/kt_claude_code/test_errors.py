@@ -3,7 +3,7 @@
 import pytest
 
 from kohakuterrarium.errors import LLMNotConfiguredError
-from kohakuterrarium.llm.recovery import ErrorClass
+from kohakuterrarium.llm.recovery.errors import ErrorClass
 
 from kt_claude_code.errors import ClaudeCodeError, classify, error_from_result
 
