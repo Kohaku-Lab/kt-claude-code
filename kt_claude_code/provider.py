@@ -28,6 +28,7 @@ from kohakuterrarium.utils.logging import get_logger
 
 from kt_claude_code.doctor import login_status
 from kt_claude_code.errors import classify
+from kt_claude_code.images import count_images
 from kt_claude_code.options import StepSettings, build_options
 from kt_claude_code.stream import StepStream
 from kt_claude_code.transcript import (
@@ -189,6 +190,7 @@ class ClaudeCodeProvider(BaseLLMProvider):
                     model=self.settings.model,
                     turns=plan.turns,
                     defer_calls=bool(tools),
+                    extra_images=count_images(plan.prompt),
                 )
                 last_uuid = entries[-1]["uuid"]
                 self._workspace.write_transcript(session_id, entries)

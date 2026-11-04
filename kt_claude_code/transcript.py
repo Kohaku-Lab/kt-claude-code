@@ -13,6 +13,8 @@ from typing import Any
 
 from kohakuterrarium.llm.anthropic.format import prepare_messages
 
+from kt_claude_code.images import fit_images
+
 TOOL_PREFIX = "mcp__kt__"
 CONTINUE_PROMPT = "(continue)"
 START_TEXT = "(conversation start)"
@@ -73,6 +75,7 @@ def plan_transcript(
         {"role": msg["role"], "content": _clean_content(msg["content"])} for msg in body
     ]
     history = _merge_same_role([msg for msg in cleaned if msg["content"]])
+    history = fit_images(history)
     if history and history[0]["role"] != "user":
         history.insert(0, {"role": "user", "content": [_text(START_TEXT)]})
     prompt: str | list[dict[str, Any]] = CONTINUE_PROMPT
@@ -97,8 +100,12 @@ def transcript_entries(
     model: str,
     turns: list[dict[str, Any]] | None = None,
     defer_calls: bool = True,
+    extra_images: int = 0,
 ) -> list[dict[str, Any]]:
     """CLI transcript lines for ``history``, chained by ``parentUuid``.
+
+    Inline images are resized to the API limits; ``extra_images`` counts the
+    ones the step's prompt adds.
 
     An assistant turn that matches a recorded turn (see :func:`record_turn`)
     is replayed from the CLI's own entries, so the request it rebuilds is
@@ -167,6 +174,10 @@ def transcript_entries(
         ]
     if defer_calls and history and history[-1]["role"] == "assistant":
         entries.extend(deferred)
+    carriers = [e for e in entries if isinstance(e.get("message"), dict)]
+    fitted = fit_images([e["message"] for e in carriers], extra=extra_images)
+    for entry, message in zip(carriers, fitted):
+        entry["message"] = message
     parent: str | None = None
     for entry in entries:
         entry.update(parentUuid=parent, isSidechain=False, sessionId=session_id)
