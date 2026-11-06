@@ -31,7 +31,10 @@ WEATHER = ToolSchema("weather", "Weather.", {"type": "object", "properties": {}}
 
 def _provider(workspace, *scripts, **kwargs):
     fake = ScriptedQuery(*scripts)
-    return ClaudeCodeProvider(workspace=workspace, query_fn=fake, **kwargs), fake
+    return (
+        ClaudeCodeProvider(workspace=workspace, query_fn=fake, keep_alive=0, **kwargs),
+        fake,
+    )
 
 
 async def _step(provider, messages, tools=None):
@@ -217,7 +220,9 @@ class TestRecordedTurns:
         )
         saves = [_saved("hi", 1, "Hello"), _saved("more", 2, "Again")]
         provider = ClaudeCodeProvider(
-            workspace=workspace, query_fn=_saving_query(workspace, fake, saves)
+            workspace=workspace,
+            query_fn=_saving_query(workspace, fake, saves),
+            keep_alive=0,
         )
         convo = [{"role": "user", "content": "hi"}]
         assert await _step(provider, convo) == "Hello"
@@ -251,6 +256,7 @@ class TestRecordedTurns:
         provider = ClaudeCodeProvider(
             workspace=workspace,
             query_fn=_saving_query(workspace, fake, [_saved("hi", 1, "ok")]),
+            keep_alive=0,
         )
         await _step(provider, [{"role": "user", "content": "hi"}])
         assert TURN_KEY not in provider.last_assistant_extra_fields
@@ -266,7 +272,9 @@ class TestDrain:
                 yield item
             after.append("cli exited")
 
-        provider = ClaudeCodeProvider(workspace=workspace, query_fn=query_fn)
+        provider = ClaudeCodeProvider(
+            workspace=workspace, query_fn=query_fn, keep_alive=0
+        )
         assert await _step(provider, [{"role": "user", "content": "hi"}]) == "ok"
         assert after == ["cli exited"]
 
@@ -281,7 +289,9 @@ class TestDrain:
             await asyncio.sleep(30)
             yield result()
 
-        provider = ClaudeCodeProvider(workspace=workspace, query_fn=query_fn)
+        provider = ClaudeCodeProvider(
+            workspace=workspace, query_fn=query_fn, keep_alive=0
+        )
         text = await asyncio.wait_for(
             _step(provider, [{"role": "user", "content": "hi"}]), 5
         )
@@ -293,7 +303,9 @@ class TestDrain:
                 yield item
             raise RuntimeError("cli crashed on exit")
 
-        provider = ClaudeCodeProvider(workspace=workspace, query_fn=query_fn)
+        provider = ClaudeCodeProvider(
+            workspace=workspace, query_fn=query_fn, keep_alive=0
+        )
         with pytest.raises(LLMNotConfiguredError):
             await _step(provider, [{"role": "user", "content": "hi"}])
 
@@ -305,7 +317,9 @@ class TestDrain:
                 yield item
             after.append("drained")
 
-        provider = ClaudeCodeProvider(workspace=workspace, query_fn=query_fn)
+        provider = ClaudeCodeProvider(
+            workspace=workspace, query_fn=query_fn, keep_alive=0
+        )
         assert await _step(provider, [{"role": "user", "content": "hi"}]) == "ok"
         assert after == []
 
@@ -333,7 +347,7 @@ class TestFailures:
                 else fake(prompt=prompt, options=options)
             )
 
-        provider = ClaudeCodeProvider(workspace=workspace, query_fn=query)
+        provider = ClaudeCodeProvider(workspace=workspace, query_fn=query, keep_alive=0)
         assert await _step(provider, [{"role": "user", "content": "hi"}]) == "Hello"
         assert calls["n"] == 2
         assert _leftovers(workspace) == []
@@ -397,6 +411,8 @@ class TestConstruction:
                 "thinking": {"type": "disabled"},
                 "cli_path": "/x/claude",
                 "max_concurrency": 2,
+                "keep_alive": 30,
+                "max_idle_sessions": 1,
             },
             retry_policy={"max_retries": 1},
         )
@@ -406,6 +422,7 @@ class TestConstruction:
         assert provider.settings.thinking == {"type": "disabled"}
         assert provider.settings.cli_path == "/x/claude"
         assert provider.max_concurrency == 2
+        assert (provider.keep_alive, provider.max_idle_sessions) == (30.0, 1)
         assert provider._retry_policy.max_retries == 1
 
     def test_from_profile_defaults(self):
@@ -414,12 +431,15 @@ class TestConstruction:
         )
         assert provider.settings.model == "sonnet"
         assert provider.settings.effort is None
+        assert (provider.keep_alive, provider.max_idle_sessions) == (300.0, 2)
 
     def test_with_model_shares_workspace_and_query(self, workspace):
-        provider, fake = _provider(workspace, effort="low")
+        provider, fake = _provider(workspace, effort="low", max_idle_sessions=3)
         other = provider.with_model("haiku")
         assert other.settings.model == "haiku" and other.settings.effort == "low"
         assert other._workspace is workspace and other._query is fake
+        assert (other.keep_alive, other.max_idle_sessions) == (0.0, 3)
+        assert other._client_factory is provider._client_factory
         assert provider.with_model("sonnet") is provider
 
 
@@ -438,7 +458,7 @@ class TestConcurrencyAndComplete:
                 active["now"] -= 1
 
         provider = ClaudeCodeProvider(
-            workspace=workspace, query_fn=slow, max_concurrency=1
+            workspace=workspace, query_fn=slow, max_concurrency=1, keep_alive=0
         )
         outs = await asyncio.gather(
             *(

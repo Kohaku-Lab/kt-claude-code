@@ -1,5 +1,6 @@
 """Build the ``ClaudeAgentOptions`` for one stateless model step."""
 
+import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -71,3 +72,10 @@ def build_options(
         kwargs["hooks"] = defer_hooks()
     return ClaudeAgentOptions(**kwargs)
 
+
+def tools_key(tools: list[ToolSchema] | None) -> tuple[tuple[str, str, str], ...]:
+    """What identifies a step's tool list, for matching a live CLI to a step."""
+    return tuple(
+        (t.name, t.description, json.dumps(t.parameters, sort_keys=True))
+        for t in tools or []
+    )

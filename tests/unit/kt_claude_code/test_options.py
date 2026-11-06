@@ -9,6 +9,7 @@ from kt_claude_code.options import (
     QUIET_ENV,
     StepSettings,
     build_options,
+    tools_key,
 )
 
 SCHEMA = {"type": "object", "properties": {"city": {"type": "string"}}}
@@ -70,3 +71,13 @@ def test_tools_are_registered_on_the_kt_server():
     assert set(opts.mcp_servers) == {"kt"}
     assert "PreToolUse" in opts.hooks
 
+
+def test_tools_key_tells_tool_lists_apart():
+    weather = ToolSchema("weather", "Weather.", SCHEMA)
+    same = ToolSchema("weather", "Weather.", dict(reversed(list(SCHEMA.items()))))
+    other = ToolSchema("weather", "Weather!", SCHEMA)
+    clock = ToolSchema("clock", "Time.", SCHEMA)
+    assert tools_key(None) == tools_key([]) == ()
+    assert tools_key([weather]) == tools_key([same])
+    assert tools_key([weather]) != tools_key([other])
+    assert tools_key([weather, clock]) != tools_key([clock, weather])

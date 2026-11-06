@@ -1,8 +1,7 @@
 """The package as a KohakuTerrarium user meets it: install, pick a preset, chat.
 
-Only the SDK ``query`` function is scripted; KT's installer, profile
-resolution, agent loop, tool execution, model switching, doctor and
-uninstall all run for real.
+Only the SDK client is scripted; KT's installer, profile resolution, agent
+loop, tool execution, model switching, doctor and uninstall all run for real.
 """
 
 from pathlib import Path
@@ -21,7 +20,7 @@ from kohakuterrarium.studio.identity.api_keys import list_keys_payload
 
 from kt_claude_code import provider as provider_mod
 
-from tests.conftest import ScriptedQuery, message, result, text_events, tool_events
+from tests.conftest import ScriptedClients, message, result, text_events, tool_events
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 
@@ -49,14 +48,15 @@ async def test_install_select_chat_with_tools_switch_and_uninstall(
     # KT never offers an API-key slot for it.
     assert "claude-code" not in {row["provider"] for row in list_keys_payload()}
 
-    fake = ScriptedQuery(
+    fake = ScriptedClients(
         message(tool_events("toolu_1", "secret_code", {"city": "Kyoto"}, 0), "tool_use")
         + [result()],
         message(text_events("The code is KOHAKU-42.")) + [result()],
+        message(text_events("Same process.")) + [result()],
         message(text_events("Still here.")) + [result()],
         message(text_events("Deep.")) + [result()],
     )
-    monkeypatch.setattr(provider_mod, "query", fake)
+    monkeypatch.setattr(provider_mod, "ClaudeSDKClient", fake)
 
     seen: list[str] = []
 
@@ -85,44 +85,48 @@ async def test_install_select_chat_with_tools_switch_and_uninstall(
         # KT ran its own tool; the CLI only proposed the call.
         assert seen == ["Kyoto"]
         assert "KOHAKU-42" in first.text
-        tool_step, answer_step = fake.calls[0], fake.calls[1]
-        assert set(tool_step["options"].mcp_servers) == {"kt"}
-        assert "Answer briefly." in tool_step["system_text"]
-        assert tool_step["options"].model == "haiku"
-        # The single call is marked deferred; its result is the next prompt.
-        marker = answer_step["transcript"][-1]["attachment"]
-        assert (marker["type"], marker["toolUseID"]) == (
-            "hook_deferred_tool",
-            "toolu_1",
-        )
-        sent = [m async for m in answer_step["prompt"]]
+        # The tool step and the answer ran on one CLI process: KT's history
+        # continued exactly what that process holds.
+        [process] = fake.clients
+        assert set(process.options.mcp_servers) == {"kt"}
+        assert "Answer briefly." in process.startup["system_text"]
+        assert process.options.model == "haiku"
+        sent = fake.queries[1]["prompt"]
         results = [
             b for b in sent[0]["message"]["content"] if b["type"] == "tool_result"
         ]
         assert [r["content"] for r in results] == ["code for Kyoto is KOHAKU-42"]
+
+        # The next user turn on the same model reuses it too.
+        assert (await agent.run("Same one?")).text.strip() == "Same process."
+        assert len(fake.clients) == 1
+        assert fake.queries[2] == {"client": 0, "prompt": "Same one?"}
 
         assert agent.switch_model("claude-code/claude-code-sonnet") == (
             "claude-code/claude-code-sonnet"
         )
         second = await agent.run("Are you there?")
         assert second.text.strip() == "Still here."
-        assert fake.calls[2]["options"].model == "sonnet"
-        # Earlier turns now arrive as resumed history.
-        assert len(fake.calls[2]["transcript"]) >= 3
+        # Another model needs another process, started on resumed history.
+        sonnet = fake.clients[1]
+        assert sonnet.options.model == "sonnet"
+        assert len(sonnet.startup["transcript"]) >= 3
         # The default effort comes from the preset.
-        assert fake.calls[2]["options"].effort == "high"
+        assert sonnet.options.effort == "high"
 
         # A pinned version with variations: effort reaches the CLI, the
         # context option sets where KT compacts.
         selector = "claude-code/claude-code-opus-5.5@reasoning=max,context=200k"
         agent.switch_model(selector)
         assert (await agent.run("Think hard.")).text.strip() == "Deep."
-        assert fake.calls[3]["options"].model == "claude-opus-5-5"
-        assert fake.calls[3]["options"].effort == "max"
+        assert fake.clients[2].options.model == "claude-opus-5-5"
+        assert fake.clients[2].options.effort == "max"
         varied = resolve_controller_llm({}, llm=selector)
         assert (varied.max_context, varied.reasoning_effort) == (200_000, "max")
     finally:
         await agent.stop()
+    # Stopping the agent stops every CLI process it left running.
+    assert [c.disconnected for c in fake.clients] == [True, True, True]
 
     # Nothing package-provided leaked into the user's provider file.
     assert "claude-code" not in (load_yaml_store().get("backends") or {})
