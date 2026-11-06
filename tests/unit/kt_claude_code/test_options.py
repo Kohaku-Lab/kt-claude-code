@@ -31,6 +31,9 @@ def test_no_builtin_tools_no_settings_and_quiet_env():
     assert opts.strict_mcp_config is True
     assert opts.env == QUIET_ENV
     assert "CLAUDE_CONFIG_DIR" not in opts.env
+    # No update check, telemetry or title request on each start.
+    assert opts.env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
+    assert opts.env["CLAUDE_CODE_DISABLE_TERMINAL_TITLE"] == "1"
     assert opts.include_partial_messages is True
     assert opts.cwd == "/w"
     assert opts.model == "haiku"
@@ -66,3 +69,4 @@ def test_tools_are_registered_on_the_kt_server():
     opts = _build(tools=[ToolSchema("weather", "Weather.", SCHEMA)])
     assert set(opts.mcp_servers) == {"kt"}
     assert "PreToolUse" in opts.hooks
+
