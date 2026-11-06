@@ -74,10 +74,14 @@ Profile options:
 | `extra_body.thinking` | Thinking config; default `{type: adaptive, display: summarized}`. |
 | `extra_body.cli_path` | Use another `claude` binary instead of the bundled one. |
 | `extra_body.max_concurrency` | Parallel CLI processes (default 4). |
+| `extra_body.keep_alive` | Seconds an idle CLI process waits for the next step of its conversation (default 300). `0` starts one process per step. |
+| `extra_body.max_idle_sessions` | Idle CLI processes kept at once, oldest closed first (default 2). |
 
 ## How it works
 
-Each `chat()` step is stateless, which matches what KohakuTerrarium expects:
+Each `chat()` step is stateless, which matches what KohakuTerrarium expects
+(a step that continues a running process skips 1, 2 and 5; see *Live
+processes* below):
 
 1. KT's history is written as a Claude Code transcript under a KT-owned
    working directory. Turns this backend produced are replayed from the
@@ -94,8 +98,30 @@ Each `chat()` step is stateless, which matches what KohakuTerrarium expects:
    resumes only one deferred call.
 5. The transcript, the CLI's saved session and the prompt file are deleted.
 
-Because nothing is kept between steps, edit / regenerate / rewind / branch /
-compaction / resume all work unchanged.
+Because KT's history is the only state that matters between steps, edit /
+regenerate / rewind / branch / compaction / resume all work unchanged.
+
+### Live processes
+
+Starting the CLI costs about a second of CPU and ~250 MB each time, and an
+agent's tool loop runs many steps. So after a step the CLI process is not
+closed: it is parked for `keep_alive` seconds. When the next step's history is
+exactly what that process holds plus its own answer and one new user message
+(the tool results, or the user's next message), only that message is sent to
+it. A tool loop and the following turns then run on one process.
+
+Anything else (an edited or regenerated turn, compaction, another model,
+system prompt or tool list, a new image) starts a fresh process from the
+transcript as described above, and the parked one is closed. A parked process
+that has died is replaced transparently. `close()` (which KT calls when an
+agent stops) closes them; they also exit on their own when Python exits.
+
+The process is the CLI as shipped with the SDK, started and driven through
+the SDK's own `ClaudeSDKClient`; it keeps using your own sign-in.
+
+The CLI is started with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` and
+`CLAUDE_CODE_DISABLE_TERMINAL_TITLE`, so it does not check for updates, send
+telemetry or request a session title on every start.
 
 ### Prompt cache
 
@@ -120,10 +146,12 @@ reports the pre-compaction prompt size, so KT compacts on its next check.
 
 ## Limits
 
-- About 1.5–2 s of CLI start-up and exit per step, and ~1k extra prompt
-  tokens the CLI adds.
-- After parallel tool calls the CLI inserts a short "No response requested."
-  reply before `(continue)`; the model sees it.
+- About 1 s of CLI start-up for a step that needs a fresh process, and ~1k
+  extra prompt tokens the CLI adds.
+- Each idle process holds ~250 MB until `keep_alive` runs out; lower
+  `max_idle_sessions` (or set `keep_alive: 0`) on a tight machine.
+- After parallel tool calls on a fresh process, the CLI inserts a short "No
+  response requested." reply before `(continue)`; the model sees it.
 - A step without tools has a different tool list, so it does not share the
   cache with steps that have tools.
 - `temperature`, `top_p`, stop sequences and provider-native tools are not
