@@ -4,6 +4,7 @@ The scripted query yields real SDK message objects, so everything after the
 SDK boundary (stream decoding, transcript files, cleanup) runs for real.
 """
 
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -213,3 +214,92 @@ class ScriptedQuery:
                 yield item
         finally:
             self.closed += 1
+
+
+class ScriptedClients:
+    """Stands in for ``ClaudeSDKClient``: builds clients that answer from scripts.
+
+    Every ``query`` on any client takes the next script. When ``saves`` are
+    given, each query first appends the next list of entries to the client's
+    session file, as the CLI saves a step. ``queries`` records each query's
+    client, prompt, options, and the transcript and system prompt the CLI
+    would read at start-up.
+    """
+
+    def __init__(self, *scripts: list[Any] | BaseException, saves=None, workspace=None):
+        self.scripts = list(scripts)
+        self.saves = list(saves or [])
+        self.workspace = workspace
+        self.clients: list[ScriptedClient] = []
+        self.queries: list[dict[str, Any]] = []
+        self.connect_error: BaseException | None = None
+
+    def __call__(self, options: Any) -> "ScriptedClient":
+        client = ScriptedClient(self, options, len(self.clients))
+        self.clients.append(client)
+        return client
+
+
+class ScriptedClient:
+    """One fake CLI process: a queue of SDK messages fed by its queries."""
+
+    END = object()
+
+    def __init__(self, owner: ScriptedClients, options: Any, index: int):
+        self.owner = owner
+        self.options = options
+        self.index = index
+        self.sid = options.resume or f"cli-sid-{index}"
+        self.connected = False
+        self.disconnected = False
+        self.startup: dict[str, Any] = {}
+        self._queue: asyncio.Queue = asyncio.Queue()
+
+    async def connect(self) -> None:
+        if self.owner.connect_error is not None:
+            raise self.owner.connect_error
+        system = self.options.system_prompt
+        if isinstance(system, dict) and system.get("type") == "file":
+            self.startup["system_text"] = Path(system["path"]).read_text(
+                encoding="utf-8"
+            )
+        if self.options.resume:
+            projects = Path(os.environ["CLAUDE_CONFIG_DIR"]) / "projects"
+            files = list(projects.rglob(f"{self.options.resume}.jsonl"))
+            self.startup["transcript"] = [
+                json.loads(line) for line in files[0].read_text().splitlines()
+            ]
+        self.connected = True
+
+    async def query(self, prompt: Any, session_id: str = "default") -> None:
+        if self.disconnected or not self.connected:
+            raise RuntimeError("process is not running")
+        if not isinstance(prompt, str):
+            prompt = [m async for m in prompt]
+        self.owner.queries.append({"client": self.index, "prompt": prompt})
+        if self.owner.saves:
+            folder = self.owner.workspace.project_dir
+            folder.mkdir(parents=True, exist_ok=True)
+            with open(folder / f"{self.sid}.jsonl", "a", encoding="utf-8") as f:
+                for entry in self.owner.saves.pop(0):
+                    f.write(json.dumps(entry) + "\n")
+        script = self.owner.scripts.pop(0)
+        if isinstance(script, BaseException) or script is self.END:
+            self._queue.put_nowait(script)
+            return
+        for item in script:
+            if isinstance(item, ResultMessage):
+                item.session_id = self.sid
+            self._queue.put_nowait(item)
+
+    async def receive_messages(self):
+        while True:
+            item = await self._queue.get()
+            if item is self.END:
+                return
+            if isinstance(item, BaseException):
+                raise item
+            yield item
+
+    async def disconnect(self) -> None:
+        self.disconnected = True

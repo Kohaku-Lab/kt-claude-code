@@ -10,6 +10,7 @@ import struct
 import zlib
 
 import pytest
+from claude_agent_sdk import ClaudeSDKClient
 
 import kohakuterrarium as kt
 from kohakuterrarium.core.agent import Agent
@@ -59,9 +60,27 @@ def workspace(tmp_path):
         ws.project_dir.rmdir()
 
 
+class CountingClients:
+    """Wraps ``ClaudeSDKClient`` to count the CLI processes a provider starts."""
+
+    def __init__(self):
+        self.started = 0
+
+    def __call__(self, options):
+        self.started += 1
+        return ClaudeSDKClient(options)
+
+
 @pytest.fixture
-def provider(workspace):
-    return ClaudeCodeProvider(model=MODEL, workspace=workspace)
+def clients():
+    return CountingClients()
+
+
+@pytest.fixture
+async def provider(workspace, clients):
+    llm = ClaudeCodeProvider(model=MODEL, workspace=workspace, client_factory=clients)
+    yield llm
+    await llm.close()
 
 
 async def _step(provider, messages, tools=None) -> str:
@@ -85,10 +104,11 @@ async def test_plain_step_uses_kt_system_prompt_and_cleans_up(provider):
     assert "PONG-7" in text
     assert provider.last_tool_calls == []
     assert provider.last_usage.get("completion_tokens", 0) > 0
+    await provider.close()
     assert _leftovers(provider) == []
 
 
-async def test_native_tool_round_trip_with_parallel_calls(provider):
+async def test_native_tool_round_trip_with_parallel_calls(provider, clients):
     messages = [
         {"role": "system", "content": "Use tools; call independent tools together."},
         {"role": "user", "content": "Weather in Taipei and local time in Tokyo?"},
@@ -117,6 +137,9 @@ async def test_native_tool_round_trip_with_parallel_calls(provider):
     text = await _step(provider, messages, tools=[WEATHER, LOCAL_TIME])
     assert provider.last_tool_calls == []
     assert "21:05" in text
+    # Both results went to the process that asked for the calls.
+    assert clients.started == 1
+    await provider.close()
     assert _leftovers(provider) == []
 
 
@@ -191,8 +214,12 @@ def test_doctor_reports_sign_in():
     assert "signed in via" in ClaudeCodeProvider.doctor()
 
 
-async def test_prompt_cache_holds_across_steps(tmp_path, workspace):
-    llm = ClaudeCodeProvider(model=MODEL, workspace=workspace)
+@pytest.mark.parametrize("keep_alive", [300.0, 0.0], ids=["live", "one-shot"])
+async def test_prompt_cache_holds_across_steps(tmp_path, workspace, keep_alive):
+    clients = CountingClients()
+    llm = ClaudeCodeProvider(
+        model=MODEL, workspace=workspace, keep_alive=keep_alive, client_factory=clients
+    )
     usages: list[dict] = []
     step = llm._one_step
 
@@ -226,6 +253,9 @@ async def test_prompt_cache_holds_across_steps(tmp_path, workspace):
     finally:
         await agent.stop()
     assert len(usages) >= 5
+    # One process for the whole conversation, or one per step without keep-alive.
+    assert clients.started == (1 if keep_alive else 0)
+    assert _leftovers(llm) == []
     # Every step after the first re-reads almost all of its prompt; without
     # the recorded-turn replay each step re-wrote the whole context.
     for usage in usages[1:]:

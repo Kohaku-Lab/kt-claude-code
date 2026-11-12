@@ -4,6 +4,7 @@ The CLI resumes the transcript as real prior turns; the prompt becomes the new
 user message of this step.
 """
 
+import hashlib
 import json
 import re
 import uuid
@@ -13,7 +14,7 @@ from typing import Any
 
 from kohakuterrarium.llm.anthropic.format import prepare_messages
 
-from kt_claude_code.images import fit_images
+from kt_claude_code.images import count_images, fit_images
 
 TOOL_PREFIX = "mcp__kt__"
 CONTINUE_PROMPT = "(continue)"
@@ -70,11 +71,7 @@ def plan_transcript(
         for msg in messages
         if msg.get("role") == "assistant" and _valid_turn(msg.get(TURN_KEY))
     ]
-    system, body = prepare_messages(messages)
-    cleaned = [
-        {"role": msg["role"], "content": _clean_content(msg["content"])} for msg in body
-    ]
-    history = _merge_same_role([msg for msg in cleaned if msg["content"]])
+    system, history = conversation(messages)
     history = fit_images(history)
     if history and history[0]["role"] != "user":
         history.insert(0, {"role": "user", "content": [_text(START_TEXT)]})
@@ -89,6 +86,59 @@ def plan_transcript(
             history.pop()
             prompt = content
     return TranscriptPlan(system=system, history=history, prompt=prompt, turns=turns)
+
+
+def conversation(
+    messages: list[dict[str, Any]],
+) -> tuple[str, list[dict[str, Any]]]:
+    """KT messages as ``(system, body)``: what the model sees, images unresized."""
+    system, body = prepare_messages(messages)
+    cleaned = [
+        {"role": msg["role"], "content": _clean_content(msg["content"])} for msg in body
+    ]
+    return system, _merge_same_role([msg for msg in cleaned if msg["content"]])
+
+
+def reply_signature(blocks: list[dict[str, Any]]) -> list[tuple[str, ...]]:
+    """The signature a step's reply has once KT stores it in its history."""
+    return _signature(_clean_content(blocks))
+
+
+def body_digest(body: list[dict[str, Any]]) -> str:
+    """A fingerprint of a body that later edits to its objects cannot change."""
+    raw = json.dumps(body, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def continuation(
+    body: list[dict[str, Any]],
+    held_size: int,
+    held_digest: str,
+    reply: list[tuple[str, ...]],
+    pending: frozenset[str],
+) -> str | list[dict[str, Any]] | None:
+    """The prompt that carries a live CLI to ``body``, if one message can.
+
+    The CLI last ran a step whose body had ``held_size`` messages and digest
+    ``held_digest``; ``reply`` is the signature of its answer and ``pending``
+    the tool calls that answer left open. A match needs ``body`` to be that
+    body, that answer, and one new user message answering every pending call;
+    images in it need a fresh step, which resizes them against the request.
+    """
+    if len(body) != held_size + 2 or body_digest(body[:held_size]) != held_digest:
+        return None
+    answer, new = body[-2], body[-1]
+    if answer["role"] != "assistant" or new["role"] != "user":
+        return None
+    if _signature(answer["content"]) != reply or count_images(new["content"]):
+        return None
+    results = {
+        b.get("tool_use_id") for b in new["content"] if b.get("type") == "tool_result"
+    }
+    if results != set(pending):
+        return None
+    text = _plain_text(new["content"])
+    return text if text is not None else new["content"]
 
 
 def transcript_entries(

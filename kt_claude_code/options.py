@@ -1,5 +1,6 @@
 """Build the ``ClaudeAgentOptions`` for one stateless model step."""
 
+import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,12 +14,15 @@ from kt_claude_code.tool_bridge import SERVER_NAME, build_mcp_server, defer_hook
 
 EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 DEFAULT_THINKING: dict[str, Any] = {"type": "adaptive", "display": "summarized"}
-# Keep the CLI from adding its own memory, CLAUDE.md, attachments or connectors.
+# Keep the CLI from adding its own memory, CLAUDE.md, attachments or connectors,
+# and from update checks, telemetry and session-title requests on every start.
 QUIET_ENV = {
     "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
     "CLAUDE_CODE_DISABLE_CLAUDE_MDS": "1",
     "CLAUDE_CODE_DISABLE_ATTACHMENTS": "1",
     "ENABLE_CLAUDEAI_MCP_SERVERS": "false",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "1",
 }
 
 
@@ -67,3 +71,11 @@ def build_options(
         kwargs["mcp_servers"] = {SERVER_NAME: build_mcp_server(tools)}
         kwargs["hooks"] = defer_hooks()
     return ClaudeAgentOptions(**kwargs)
+
+
+def tools_key(tools: list[ToolSchema] | None) -> tuple[tuple[str, str, str], ...]:
+    """What identifies a step's tool list, for matching a live CLI to a step."""
+    return tuple(
+        (t.name, t.description, json.dumps(t.parameters, sort_keys=True))
+        for t in tools or []
+    )

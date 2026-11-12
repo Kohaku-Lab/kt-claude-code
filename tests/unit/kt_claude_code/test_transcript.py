@@ -4,10 +4,14 @@ from kt_claude_code.transcript import (
     CONTINUE_PROMPT,
     START_TEXT,
     TURN_KEY,
+    body_digest,
     cli_tool_name,
+    continuation,
+    conversation,
     kt_tool_name,
     plan_transcript,
     record_turn,
+    reply_signature,
     safe_tool_id,
     transcript_entries,
 )
@@ -450,3 +454,100 @@ class TestDeferredMarkers:
         plain_plan, plain = self._plan([_call("c1")], defer_calls=False)
         assert plain_plan.prompt == CONTINUE_PROMPT
         assert "attachment" not in [e["type"] for e in plain]
+
+
+def _body(messages):
+    return conversation(messages)[1]
+
+
+def _continuation(body, held, reply, pending):
+    return continuation(body, len(held), body_digest(held), reply, pending)
+
+
+def _tool_turn():
+    """A step that asked for one call: its input, held body, reply and stored form."""
+    convo = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "weather?"},
+    ]
+    reply = reply_signature(
+        [
+            {"type": "thinking", "thinking": "hm", "signature": "s"},
+            {"type": "text", "text": "Checking. "},
+            {
+                "type": "tool_use",
+                "id": "toolu_1",
+                "name": "weather",
+                "input": {"city": "Taipei"},
+            },
+        ]
+    )
+    stored = {
+        "role": "assistant",
+        "content": "Checking.",
+        "tool_calls": [_call("toolu_1")],
+    }
+    return convo, _body(convo), reply, stored
+
+
+RESULT = {"role": "tool", "tool_call_id": "toolu_1", "content": "9C"}
+PENDING = frozenset({"toolu_1"})
+
+
+class TestContinuation:
+    def test_tool_result_answering_the_reply_is_the_prompt(self):
+        convo, held, reply, stored = _tool_turn()
+        prompt = _continuation(_body(convo + [stored, RESULT]), held, reply, PENDING)
+        assert prompt == [
+            {"type": "tool_result", "tool_use_id": "toolu_1", "content": "9C"}
+        ]
+
+    def test_plain_text_after_a_text_reply_is_sent_as_text(self):
+        convo = [{"role": "user", "content": "hi"}]
+        reply = reply_signature([{"type": "text", "text": "Hello"}])
+        body = _body(
+            convo
+            + [
+                {"role": "assistant", "content": "Hello"},
+                {"role": "user", "content": "more"},
+            ]
+        )
+        assert _continuation(body, _body(convo), reply, frozenset()) == "more"
+
+    def test_a_call_kt_closed_as_interrupted_still_continues(self):
+        convo, held, reply, stored = _tool_turn()
+        text_only = _body(convo + [stored, {"role": "user", "content": "never mind"}])
+        prompt = _continuation(text_only, held, reply, PENDING)
+        assert [b["type"] for b in prompt] == ["tool_result", "text"]
+        assert prompt[0]["tool_use_id"] == "toolu_1" and prompt[0]["is_error"]
+
+    def test_unknown_or_missing_call_ids_need_a_fresh_step(self):
+        convo, held, reply, stored = _tool_turn()
+        answered = _body(convo + [stored, RESULT])
+        assert _continuation(answered, held, reply, frozenset()) is None
+        assert _continuation(answered, held, reply, PENDING | {"toolu_2"}) is None
+
+    def test_a_different_reply_or_history_needs_a_fresh_step(self):
+        convo, held, reply, stored = _tool_turn()
+        edited = dict(stored, content="Something else.")
+        assert (
+            _continuation(_body(convo + [edited, RESULT]), held, reply, PENDING) is None
+        )
+        changed = [convo[0], {"role": "user", "content": "rain?"}, stored, RESULT]
+        assert _continuation(_body(changed), held, reply, PENDING) is None
+        longer = convo + [stored, RESULT, {"role": "assistant", "content": "x"}]
+        assert _continuation(_body(longer), held, reply, PENDING) is None
+        assert _continuation(_body(convo), held, reply, PENDING) is None
+
+    def test_a_new_image_needs_a_fresh_step(self):
+        convo = [{"role": "user", "content": "hi"}]
+        reply = reply_signature([{"type": "text", "text": "Hello"}])
+        image = {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "look"},
+                {"type": "image_url", "image_url": {"url": PNG}},
+            ],
+        }
+        body = _body(convo + [{"role": "assistant", "content": "Hello"}, image])
+        assert _continuation(body, _body(convo), reply, frozenset()) is None
